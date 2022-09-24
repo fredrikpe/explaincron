@@ -33,7 +33,6 @@ impl Schedule {
     }
 }
 
-
 fn input_from(value: &str) -> Result<Input, String> {
     if value.contains('/') {
         let mut split = value.split('/');
@@ -243,6 +242,7 @@ fn main() -> Result<(), String> {
     };
 
     println!("{}", human_readable_schedule(schedule));
+    let _sss = Schedule::from_str("* * * * *");
 
     Ok(())
 }
@@ -282,7 +282,7 @@ mod tests {
             "At every 3rd minute from 2 through 59."
         );
     }
-    
+
     #[test]
     fn minute_step_hour_23() {
         assert_eq!(
