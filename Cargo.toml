@@ -2,6 +2,14 @@
 name = "explaincron"
 version = "0.1.0"
 edition = "2021"
+authors = ["Fredrik Pe <fredrikpei@gmail.com>"]
+license = "MIT"
+description = "A tool to explain cron schedules"
+readme = "README.md"
+homepage = "https://github.com/fredrikpe/explaincron"
+repository = "https://github.com/fredrikpe/explaincron"
+keywords = ["cli", "cron"]
+categories = ["command-line-utilities"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
