@@ -1,133 +1,48 @@
 use clap::{App, Arg};
 
-const MONTH_NAMES: &[&str] = &["JAN", "FEB", "MAR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-const WEEK_DAY_NAMES: &[&str] = &["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+use crate::parser;
 
-fn minute_validator(elem: &str) -> Result<(), String> {
-    elem.parse::<i32>()
-        .map_err(|_| format!("{elem} is not in 0-59"))
-        .and_then(|i| {
-            if i <= 59 && i >= 0 {
-                Ok(())
-            } else {
-                Err(format!("{i} is not in 0-59"))
-            }
-        })
-}
-
-fn hour_validator(elem: &str) -> Result<(), String> {
-    elem.parse::<i32>()
-        .map_err(|_| format!("{elem} is not in 0-23"))
-        .and_then(|i| {
-            if i <= 23 && i >= 0 {
-                Ok(())
-            } else {
-                Err(format!("{i} is not in 0-23"))
-            }
-        })
-}
-
-fn day_of_month_validator(elem: &str) -> Result<(), String> {
-    elem.parse::<i32>()
-        .map_err(|_| format!("{elem} is not in 1-31"))
-        .and_then(|i| {
-            if i <= 31 && i >= 1 {
-                Ok(())
-            } else {
-                Err(format!("{i} is not in 1-31"))
-            }
-        })
-}
-
-fn month_validator(elem: &str) -> Result<(), String> {
-    if MONTH_NAMES.contains(&elem) {
-        return Ok(())
-    } else {
-        elem.parse::<i32>()
-            .map_err(|_| format!("{elem} is not in 1-12 or JAN-DEC"))
-            .and_then(|i| {
-                if i <= 12 && i >= 1 {
-                    Ok(())
-                } else {
-                    Err(format!("{i} is not in 1-12 or JAN-DEC"))
-                }
-            })
-    }
-}
-
-fn day_of_week_validator(elem: &str) -> Result<(), String> {
-    if WEEK_DAY_NAMES.contains(&elem) {
-        return Ok(())
-    } else {
-        elem.parse::<i32>()
-            .map_err(|_| format!("{elem} is not in 0-6 or MON-SUN"))
-            .and_then(|i| {
-                if i <= 6 && i >= 0 {
-                    Ok(())
-                } else {
-                    Err(format!("{i} is not in 0-6 or MON-SUN"))
-                }
-            })
-    }
-}
-
-fn list_validator(
-    split: std::str::Split<char>,
-    elem_parser: fn(&str) -> Result<(), String>,
+fn input_validator(
+    input: String,
+    elem_parser: fn(&str) -> Result<i32, String>,
 ) -> Result<(), String> {
-    split
-        .map(elem_parser)
-        .collect::<Result<Vec<_>, _>>()
-        .map(|_| ())
-}
-
-fn range_validator(
-    split: std::str::Split<char>,
-    elem_parser: fn(&str) -> Result<(), String>,
-) -> Result<(), String> {
-    let l = split.map(elem_parser).collect::<Result<Vec<_>, _>>()?;
-    if l.len() != 2 {
-        return Err(format!("range can have only two elements"));
-    }
-    Ok(())
-}
-
-fn step_validator(
-    split: std::str::Split<char>,
-    elem_parser: fn(&str) -> Result<(), String>,
-) -> Result<(), String> {
-    let l = split.map(elem_parser).collect::<Result<Vec<_>, _>>()?;
-    if l.len() != 2 {
-        return Err(format!("step can have only two elements"));
-    }
-    Ok(())
-}
-
-fn input_validator(input: String, elem_validator: fn(&str) -> Result<(), String>) -> Result<(), String> {
     return if input.contains(',') {
-        list_validator(input.split(','), elem_validator)
+        parser::list(input.split(','), elem_parser).map(|_| ())
     } else if input.contains('-') {
-        range_validator(input.split('-'), elem_validator)
+        parser::range(input.split('-'), elem_parser).map(|_| ())
     } else if input.contains('/') {
-        step_validator(input.split('/'), elem_validator)
+        parser::step(input.split('/'), elem_parser).map(|_| ())
     } else if input == "*" {
         Ok(())
     } else {
-        elem_validator(&input)
+        elem_parser(&input).map(|_| ())
     };
 }
 
-const ABOUT: &str =
-"\nExplain cron schedules in human readable form.
+fn schedule_validator(schedule_input: String) -> Result<(), String> {
+    let parts = schedule_input.split_whitespace().collect::<Vec<&str>>();
+    if parts.len() != 5 {
+        return Err(format!("schedule does not contain 5 parts"));
+    }
+    input_validator(parts[0].to_string(), parser::minute)?;
+    input_validator(parts[1].to_string(), parser::hour)?;
+    input_validator(parts[2].to_string(), parser::day_of_month)?;
+    input_validator(parts[3].to_string(), parser::month)?;
+    input_validator(parts[4].to_string(), parser::day_of_week)?;
+
+    Ok(())
+}
+
+const ABOUT: &str = "\nExplain cron schedules in human readable form.
 cron syntax:
     *	any value
     ,	value list separator
     -	range of values
     /	step values";
 
-const USAGE: &str =
-"explaincron [FLAGS] [ARGS]
-    explaincron 3-5 1/4 \\* \\* \\*";
+const USAGE: &str = "explaincron [FLAGS] [ARGS]
+    explaincron 3-5 1/4 \\* \\* \\*
+    explaincron -s '* * * FEB SUN'";
 
 pub fn app() -> App<'static, 'static> {
     return App::new("explaincron")
@@ -141,7 +56,7 @@ pub fn app() -> App<'static, 'static> {
                 .default_value("*")
                 .required(false)
                 .index(1)
-                .validator(|input| input_validator(input, minute_validator)),
+                .validator(|input| input_validator(input, parser::minute)),
         )
         .arg(
             Arg::with_name("HOUR")
@@ -149,7 +64,7 @@ pub fn app() -> App<'static, 'static> {
                 .default_value("*")
                 .required(false)
                 .index(2)
-                .validator(|input| input_validator(input, hour_validator)),
+                .validator(|input| input_validator(input, parser::hour)),
         )
         .arg(
             Arg::with_name("DAY (of month)")
@@ -157,7 +72,7 @@ pub fn app() -> App<'static, 'static> {
                 .default_value("*")
                 .required(false)
                 .index(3)
-                .validator(|input| input_validator(input, day_of_month_validator)),
+                .validator(|input| input_validator(input, parser::day_of_month)),
         )
         .arg(
             Arg::with_name("MONTH")
@@ -165,7 +80,7 @@ pub fn app() -> App<'static, 'static> {
                 .default_value("*")
                 .required(false)
                 .index(4)
-                .validator(|input| input_validator(input, month_validator)),
+                .validator(|input| input_validator(input, parser::month)),
         )
         .arg(
             Arg::with_name("DAY (of week)")
@@ -173,12 +88,16 @@ pub fn app() -> App<'static, 'static> {
                 .default_value("*")
                 .required(false)
                 .index(5)
-                .validator(|input| input_validator(input, day_of_week_validator)),
+                .validator(|input| input_validator(input, parser::day_of_week)),
         )
         .arg(
-            Arg::with_name("v")
-                .short("v")
+            Arg::with_name("schedule")
+                .short("s")
+                .long("schedule")
+                .value_name("SCHEDULE")
+                .takes_value(true)
                 .multiple(false)
-                .help("Sets the level of verbosity"),
+                .help("Provide complete schedule in one argument")
+                .validator(schedule_validator),
         );
 }
