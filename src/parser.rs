@@ -4,7 +4,7 @@ const MONTH_NAMES: &[&str] = &[
 const WEEK_DAY_NAMES: &[&str] = &["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 
 pub enum CronElem {
-    Step(i32, i32),
+    Step(Option<i32>, i32),
     Range(i32, i32),
     List(Vec<i32>),
     Single(i32),
@@ -32,14 +32,28 @@ pub fn range(
 }
 
 pub fn step(
-    split: std::str::Split<char>,
+    mut split: std::str::Split<char>,
     elem_parser: fn(&str) -> Result<i32, String>,
 ) -> Result<CronElem, String> {
-    let l = split.map(elem_parser).collect::<Result<Vec<_>, _>>()?;
-    if l.len() != 2 {
-        return Err(format!("step can have only two elements"));
+    let start = split
+        .next()
+        .ok_or(format!("step must have two elements"))
+        .map(|s| {
+            if s == "*" {
+                None
+            } else {
+                Some(elem_parser(s).ok()?)
+            }
+        })?;
+    let step = split
+        .next()
+        .ok_or(format!("step must have two elements"))
+        .and_then(elem_parser)?;
+    if split.next().is_some() {
+        return Err(format!("step must have two elements"));
     }
-    Ok(CronElem::Step(l[0], l[1]))
+
+    Ok(CronElem::Step(start, step))
 }
 
 pub fn minute(elem: &str) -> Result<i32, String> {
@@ -96,7 +110,7 @@ pub fn month(elem: &str) -> Result<i32, String> {
 
 pub fn day_of_week(elem: &str) -> Result<i32, String> {
     match WEEK_DAY_NAMES.iter().position(|x| x == &elem) {
-        Some(i) => Ok(i as i32),
+        Some(i) => Ok((i + 1) as i32),
         None => elem
             .parse::<i32>()
             .map_err(|_| format!("{elem} is not in 0-6 or MON-SUN"))

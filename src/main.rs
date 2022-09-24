@@ -1,7 +1,7 @@
 mod clap_app;
 mod parser;
 
-use parser::CronElem::{Step, Range, List, Single, Wildcard};
+use parser::CronElem::{List, Range, Single, Step, Wildcard};
 
 struct Schedule {
     minute: parser::CronElem,
@@ -65,14 +65,15 @@ fn ordinal(i: i32) -> String {
 
 fn day_of_week_string(i: i32) -> String {
     match i {
-        0 => "Monday".to_string(),
-        1 => "Tuesday".to_string(),
-        2 => "Wednesday".to_string(),
-        3 => "Thursday".to_string(),
-        4 => "Friday".to_string(),
-        5 => "Saturday".to_string(),
-        6 => "Sunday".to_string(),
-        _ => "January".to_string(),
+        0 => "Sunday".to_string(),
+        1 => "Monday".to_string(),
+        2 => "Tuesday".to_string(),
+        3 => "Wednesday".to_string(),
+        4 => "Thursday".to_string(),
+        5 => "Friday".to_string(),
+        6 => "Saturday".to_string(),
+        7 => "Sunday".to_string(),
+        _ => panic!("should be validated"),
     }
 }
 
@@ -117,8 +118,12 @@ fn human_readable_schedule(schedule: Schedule) -> String {
     let mut result = "".to_string();
     match schedule.minute {
         Step(start, step) => result.push_str(&format!(
-            "At every {}minute from {start} through 59",
-            ordinal(step)
+            "At every {}minute{}",
+            ordinal(step),
+            match start {
+                Some(i) => format!(" from {i} through 59"),
+                None => "".to_string(),
+            }
         )),
         Range(start, stop) => {
             result.push_str(&format!("At every minute from {start} through {stop}"))
@@ -132,9 +137,12 @@ fn human_readable_schedule(schedule: Schedule) -> String {
     }
     match schedule.hour {
         Step(start, step) => result.push_str(&format!(
-            " past every {}hour from {} through 23",
+            " past every {}hour{}",
             ordinal(step),
-            start
+            match start {
+                Some(i) => format!(" from {i} through 23"),
+                None => "".to_string(),
+            }
         )),
         Range(start, stop) => {
             result.push_str(&format!(" past every hour from {start} through {stop}"))
@@ -148,14 +156,17 @@ fn human_readable_schedule(schedule: Schedule) -> String {
     }
     match schedule.day_of_month {
         Step(start, step) => result.push_str(&format!(
-            " on every {}day-of-month from {} through 31",
+            " on every {}day-of-month{}",
             ordinal(step),
-            start
+            match start {
+                Some(i) => format!(" from {i} through 31"),
+                None => "".to_string(),
+            }
         )),
         Range(start, stop) => result.push_str(&format!(
             " on every day-of-month from {start} through {stop}"
         )),
-        List(list) => result.push_str(&format!(
+        List(ref list) => result.push_str(&format!(
             " on day-of-month {}",
             comma_list(&list, |i| i.to_string())
         )),
@@ -164,41 +175,53 @@ fn human_readable_schedule(schedule: Schedule) -> String {
     }
     match schedule.month {
         Step(start, step) => result.push_str(&format!(
-            " in every {}month from {} through December",
+            " in every {}month{}",
             ordinal(step),
-            month_string(start)
+            match start {
+                Some(i) => format!(" from {} through December", month_string(i)),
+                None => "".to_string(),
+            }
         )),
         Range(start, stop) => result.push_str(&format!(
             " in every month from {} through {}",
             month_string(start),
             month_string(stop)
         )),
-        List(list) => {
-            result.push_str(&format!(" in {}", comma_list(&list, |i| month_string(i))))
-        }
-        Single(single) => {
-            result.push_str(&format!(" in {}", month_string(single)))
-        }
+        List(list) => result.push_str(&format!(" in {}", comma_list(&list, |i| month_string(i)))),
+        Single(single) => result.push_str(&format!(" in {}", month_string(single))),
         Wildcard => (),
     }
+    let day_of_week_prefix = match schedule.day_of_month {
+        Step(None, _) => "if it's ",
+        Wildcard => "",
+        _ => "and ",
+    };
     match schedule.day_of_week {
         Step(start, step) => result.push_str(&format!(
-            " on every {}day-of-week from {} through Sunday",
+            " {}on every {}day-of-week{}",
+            day_of_week_prefix,
             ordinal(step),
-            day_of_week_string(start)
+            match start {
+                Some(i) => format!(" from {} through Sunday", day_of_week_string(i)),
+                None => "".to_string(),
+            }
         )),
         Range(start, stop) => result.push_str(&format!(
-            " on every day-of-week from {} through {}",
+            " {}on every day-of-week from {} through {}",
+            day_of_week_prefix,
             day_of_week_string(start),
             day_of_week_string(stop)
         )),
         List(list) => result.push_str(&format!(
-            " on {}",
+            " {}on {}",
+            day_of_week_prefix,
             comma_list(&list, |i| day_of_week_string(i))
         )),
-        Single(single) => {
-            result.push_str(&format!(" on {}", day_of_week_string(single)))
-        }
+        Single(single) => result.push_str(&format!(
+            " {}on {}",
+            day_of_week_prefix,
+            day_of_week_string(single)
+        )),
         Wildcard => (),
     }
     result.push_str(".");
@@ -291,6 +314,14 @@ mod tests {
     }
 
     #[test]
+    fn day_of_week_step() {
+        assert_eq!(
+            human_readable_schedule(Schedule::from_str("* * * * 4/5").unwrap()),
+            "At every minute on every 5th day-of-week from Thursday through Sunday."
+        );
+    }
+
+    #[test]
     fn day_of_week_str() {
         assert_eq!(
             human_readable_schedule(Schedule::from_str("* * * * WED").unwrap()),
@@ -303,6 +334,25 @@ mod tests {
         assert_eq!(
             human_readable_schedule(Schedule::from_str("* * * MAY *").unwrap()),
             "At every minute in May."
+        );
+    }
+
+    #[test]
+    fn cron_bug_test() {
+        // https://crontab.guru/cron-bug.html
+        assert_eq!(
+            human_readable_schedule(Schedule::from_str("* * 3 * 1").unwrap()),
+            "At every minute on day-of-month 3 and on Monday."
+        );
+
+        assert_eq!(
+            human_readable_schedule(Schedule::from_str("* * */2 * 1").unwrap()),
+            "At every minute on every 2nd day-of-month if it's on Monday."
+        );
+
+        assert_eq!(
+            human_readable_schedule(Schedule::from_str("* * 1-3 * 1").unwrap()),
+            "At every minute on every day-of-month from 1 through 3 and on Monday."
         );
     }
 }
