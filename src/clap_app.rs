@@ -117,14 +117,24 @@ fn input_validator(input: String, elem_validator: fn(&str) -> Result<(), String>
     };
 }
 
-const APP_NAME: &str = "asdf";
+const ABOUT: &str =
+"\nExplain cron schedules in human readable form.
+cron syntax:
+    *	any value
+    ,	value list separator
+    -	range of values
+    /	step values";
+
+const USAGE: &str =
+"explaincron [FLAGS] [ARGS]
+    explaincron 3-5 1/4 \\* \\* \\*";
 
 pub fn app() -> App<'static, 'static> {
-    return App::new(APP_NAME)
+    return App::new("explaincron")
         .version("0.1")
-        .usage("explaincron [FLAGS] [ARGS]\n    explaincron 3-5 1/4 * * *")
+        .usage(USAGE)
         .author("Fredrik Pe <fredrikpei@gmail.com>")
-        .about("Does awesome things")
+        .about(ABOUT)
         .arg(
             Arg::with_name("MINUTE")
                 .help("Allowed values 0-59")
