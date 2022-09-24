@@ -11,6 +11,26 @@ pub enum CronElem {
     Wildcard,
 }
 
+impl std::fmt::Display for CronElem {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let str = match self {
+            CronElem::Step(Some(start), step) => format!("{start}/{step}"),
+            CronElem::Step(None, step) => format!("*/{step}"),
+            CronElem::Range(start, stop) => format!("{start}-{stop}"),
+            CronElem::List(list) => list
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<String>>()
+                .join(","),
+            CronElem::Single(i) => i.to_string(),
+            CronElem::Wildcard => "*".to_string(),
+        };
+        fmt.write_str(&str)?;
+
+        Ok(())
+    }
+}
+
 pub fn list(
     split: std::str::Split<char>,
     elem_parser: fn(&str) -> Result<i32, String>,

@@ -53,7 +53,7 @@ pub fn app() -> App<'static, 'static> {
         .arg(
             Arg::with_name("MINUTE (or complete schedule)")
                 .help("Allowed values 0-59. Or a complete schedule.")
-                .required(true)
+                .required_unless("random")
                 .index(1)
                 .validator(|input| {
                     if input.contains(char::is_whitespace) {
@@ -94,5 +94,12 @@ pub fn app() -> App<'static, 'static> {
                 .required(false)
                 .index(5)
                 .validator(|input| input_validator(input, parser::day_of_week)),
+        )
+        .arg(
+            Arg::with_name("random")
+                .short("r")
+                .long("random")
+                .multiple(false)
+                .help("Output a random cron schedule"),
         );
 }

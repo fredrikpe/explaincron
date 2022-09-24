@@ -26,6 +26,31 @@ impl Schedule {
             day_of_week: input_from(split[4], parser::day_of_week)?,
         })
     }
+
+    fn to_string(&self) -> String {
+        format!(
+            "{} {} {} {} {}",
+            self.minute.to_string(),
+            self.hour.to_string(),
+            self.day_of_month.to_string(),
+            self.month.to_string(),
+            self.day_of_week.to_string(),
+        )
+    }
+}
+
+fn random_cron_elem(min: i32, max: i32) -> parser::CronElem {
+    match fastrand::i32(0..=10) {
+        0 => match fastrand::i32(2..4) {
+            3 => List((0..3).map(|_| fastrand::i32(min..=max)).collect()),
+            4 => List((0..4).map(|_| fastrand::i32(min..=max)).collect()),
+            _ => List((0..2).map(|_| fastrand::i32(min..=max)).collect()),
+        },
+        1 => Range(fastrand::i32(min..=max), fastrand::i32(min..=max)),
+        2 => Single(fastrand::i32(min..=max)),
+        3 => Step(Some(fastrand::i32(min..=max)), fastrand::i32(min..=max)),
+        _ => Wildcard,
+    }
 }
 
 fn input_from(
@@ -231,26 +256,38 @@ fn human_readable_schedule(schedule: Schedule) -> String {
 fn main() -> Result<(), String> {
     let matches = clap_app::app().get_matches();
 
-    let first_arg = matches.value_of("MINUTE (or complete schedule)").unwrap();
-
-    let schedule = if first_arg.contains(char::is_whitespace) {
-        Schedule::from_str(first_arg).unwrap()
-    } else {
+    let schedule = if matches.is_present("random") {
         Schedule {
-            minute: input_from(first_arg, parser::minute)?,
-            hour: input_from(matches.value_of("HOUR").unwrap(), parser::hour)?,
-            day_of_month: input_from(
-                matches.value_of("DAY (of month)").unwrap(),
-                parser::day_of_month,
-            )?,
-            month: input_from(matches.value_of("MONTH").unwrap(), parser::month)?,
-            day_of_week: input_from(
-                matches.value_of("DAY (of week)").unwrap(),
-                parser::day_of_week,
-            )?,
+            minute: random_cron_elem(0, 59),
+            hour: random_cron_elem(0, 23),
+            day_of_month: random_cron_elem(1, 31),
+            month: random_cron_elem(1, 12),
+            day_of_week: random_cron_elem(0, 6),
+        }
+    } else {
+        let first_arg = matches.value_of("MINUTE (or complete schedule)").unwrap();
+        if first_arg.contains(char::is_whitespace) {
+            Schedule::from_str(first_arg).unwrap()
+        } else {
+            Schedule {
+                minute: input_from(first_arg, parser::minute)?,
+                hour: input_from(matches.value_of("HOUR").unwrap(), parser::hour)?,
+                day_of_month: input_from(
+                    matches.value_of("DAY (of month)").unwrap(),
+                    parser::day_of_month,
+                )?,
+                month: input_from(matches.value_of("MONTH").unwrap(), parser::month)?,
+                day_of_week: input_from(
+                    matches.value_of("DAY (of week)").unwrap(),
+                    parser::day_of_week,
+                )?,
+            }
         }
     };
 
+    if matches.is_present("random") {
+        println!("{}", schedule.to_string());
+    }
     println!("{}", human_readable_schedule(schedule));
 
     Ok(())
