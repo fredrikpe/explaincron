@@ -1,7 +1,5 @@
 mod clap_app;
 
-
-#[derive(Debug)]
 enum Input {
     Step(i32, i32),
     Range(i32, i32),
@@ -9,6 +7,32 @@ enum Input {
     Single(i32),
     Wildcard,
 }
+
+struct Schedule {
+    minute: Input,
+    hour: Input,
+    day_of_month: Input,
+    month: Input,
+    day_of_week: Input,
+}
+
+impl Schedule {
+    fn from_str(s: &str) -> Result<Schedule, String> {
+        let split: Vec<&str> = s.split(" ").collect();
+        if split.len() != 5 {
+            return Err("malformed schedule: need 5 components".to_string());
+        }
+
+        Ok(Schedule {
+            minute: input_from(split[0])?,
+            hour: input_from(split[1])?,
+            day_of_month: input_from(split[2])?,
+            month: input_from(split[3])?,
+            day_of_week: input_from(split[4])?,
+        })
+    }
+}
+
 
 fn input_from(value: &str) -> Result<Input, String> {
     if value.contains('/') {
@@ -51,8 +75,8 @@ fn input_from(value: &str) -> Result<Input, String> {
     return Ok(Input::Single(value.parse::<i32>().unwrap()));
 }
 
-fn ordinal(i: &i32) -> String {
-    if *i == 1i32 {
+fn ordinal(i: i32) -> String {
+    if i == 1i32 {
         return "".to_string();
     }
 
@@ -119,15 +143,9 @@ fn comma_list(list: &Vec<i32>, f: fn(i32) -> String) -> String {
     }
 }
 
-fn human_readable_schedule(
-    minute: &Input,
-    hour: &Input,
-    day_of_month: &Input,
-    month: &Input,
-    day_of_week: &Input,
-) -> String {
+fn human_readable_schedule(schedule: Schedule) -> String {
     let mut result = "".to_string();
-    match minute {
+    match schedule.minute {
         Input::Step(start, step) => result.push_str(&format!(
             "At every {}minute from {start} through 59",
             ordinal(step)
@@ -137,12 +155,12 @@ fn human_readable_schedule(
         }
         Input::List(list) => result.push_str(&format!(
             "At minute {}",
-            comma_list(list, |i| i.to_string())
+            comma_list(&list, |i| i.to_string())
         )),
         Input::Single(single) => result.push_str(&format!("At minute {single}")),
         Input::Wildcard => result.push_str(&format!("At every minute")),
     }
-    match hour {
+    match schedule.hour {
         Input::Step(start, step) => result.push_str(&format!(
             " past every {}hour from {} through 23",
             ordinal(step),
@@ -153,12 +171,12 @@ fn human_readable_schedule(
         }
         Input::List(list) => result.push_str(&format!(
             " past hour {}",
-            comma_list(list, |i| i.to_string())
+            comma_list(&list, |i| i.to_string())
         )),
         Input::Single(single) => result.push_str(&format!(" past hour {single}")),
         Input::Wildcard => (),
     }
-    match day_of_month {
+    match schedule.day_of_month {
         Input::Step(start, step) => result.push_str(&format!(
             " on every {}day-of-month from {} through 31",
             ordinal(step),
@@ -169,63 +187,123 @@ fn human_readable_schedule(
         )),
         Input::List(list) => result.push_str(&format!(
             " on day-of-month {}",
-            comma_list(list, |i| i.to_string())
+            comma_list(&list, |i| i.to_string())
         )),
         Input::Single(single) => result.push_str(&format!(" on day-of-month {single}")),
         Input::Wildcard => (),
     }
-    match month {
+    match schedule.month {
         Input::Step(start, step) => result.push_str(&format!(
             " in every {}month from {} through December",
             ordinal(step),
-            month_string(*start)
+            month_string(start)
         )),
         Input::Range(start, stop) => result.push_str(&format!(
             " in every month from {} through {}",
-            month_string(*start),
-            month_string(*stop)
+            month_string(start),
+            month_string(stop)
         )),
         Input::List(list) => {
-            result.push_str(&format!(" in {}", comma_list(list, |i| month_string(i))))
+            result.push_str(&format!(" in {}", comma_list(&list, |i| month_string(i))))
         }
-        Input::Single(single) => result.push_str(&format!(" in {}", month_string(*single))),
+        Input::Single(single) => result.push_str(&format!(" in {}", month_string(single))),
         Input::Wildcard => (),
     }
-    match day_of_week {
+    match schedule.day_of_week {
         Input::Step(start, step) => result.push_str(&format!(
             " on every {}day-of-week from {} through Sunday",
             ordinal(step),
-            day_of_week_string(*start)
+            day_of_week_string(start)
         )),
         Input::Range(start, stop) => result.push_str(&format!(
             " on every day-of-week from {} through {}",
-            day_of_week_string(*start),
-            day_of_week_string(*stop)
+            day_of_week_string(start),
+            day_of_week_string(stop)
         )),
         Input::List(list) => result.push_str(&format!(
             " on {}",
-            comma_list(list, |i| day_of_week_string(i))
+            comma_list(&list, |i| day_of_week_string(i))
         )),
-        Input::Single(single) => result.push_str(&format!(" on {}", day_of_week_string(*single))),
+        Input::Single(single) => result.push_str(&format!(" on {}", day_of_week_string(single))),
         Input::Wildcard => (),
     }
+    result.push_str(".");
     result
 }
-
 
 fn main() -> Result<(), String> {
     let matches = clap_app::app().get_matches();
 
-    let minute = input_from(matches.value_of("MINUTE").unwrap())?;
-    let hour = input_from(matches.value_of("HOUR").unwrap())?;
-    let day_of_month = input_from(matches.value_of("DAY (of month)").unwrap())?;
-    let month = input_from(matches.value_of("MONTH").unwrap())?;
-    let day_of_week = input_from(matches.value_of("DAY (of week)").unwrap())?;
+    let schedule = Schedule {
+        minute: input_from(matches.value_of("MINUTE").unwrap())?,
+        hour: input_from(matches.value_of("HOUR").unwrap())?,
+        day_of_month: input_from(matches.value_of("DAY (of month)").unwrap())?,
+        month: input_from(matches.value_of("MONTH").unwrap())?,
+        day_of_week: input_from(matches.value_of("DAY (of week)").unwrap())?,
+    };
 
-    println!(
-        "{}",
-        human_readable_schedule(&minute, &hour, &day_of_month, &month, &day_of_week)
-    );
+    println!("{}", human_readable_schedule(schedule));
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_wildcards() {
+        assert_eq!(
+            human_readable_schedule(Schedule::from_str("* * * * *").unwrap()),
+            "At every minute."
+        );
+    }
+
+    #[test]
+    fn minute_1() {
+        assert_eq!(
+            human_readable_schedule(Schedule::from_str("1 * * * *").unwrap()),
+            "At minute 1."
+        );
+    }
+
+    #[test]
+    fn minute_2() {
+        assert_eq!(
+            human_readable_schedule(Schedule::from_str("2 * * * *").unwrap()),
+            "At minute 2."
+        );
+    }
+
+    #[test]
+    fn minute_step() {
+        assert_eq!(
+            human_readable_schedule(Schedule::from_str("2/3 * * * *").unwrap()),
+            "At every 3rd minute from 2 through 59."
+        );
+    }
+    
+    #[test]
+    fn minute_step_hour_23() {
+        assert_eq!(
+            human_readable_schedule(Schedule::from_str("2/3 23 * * *").unwrap()),
+            "At every 3rd minute from 2 through 59 past hour 23."
+        );
+    }
+
+    #[test]
+    fn minute_range() {
+        assert_eq!(
+            human_readable_schedule(Schedule::from_str("24-39 * * * *").unwrap()),
+            "At every minute from 24 through 39."
+        );
+    }
+
+    #[test]
+    fn minute_list() {
+        assert_eq!(
+            human_readable_schedule(Schedule::from_str("24,39,42,13 * * * *").unwrap()),
+            "At minute 24, 39, 42, and 13."
+        );
+    }
 }

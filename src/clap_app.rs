@@ -61,6 +61,5 @@ pub fn app() -> App<'static, 'static> {
                 .short("v")
                 .multiple(false)
                 .help("Sets the level of verbosity"),
-        )
+        );
 }
-
