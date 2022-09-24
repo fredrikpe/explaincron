@@ -42,7 +42,7 @@ cron syntax:
 
 const USAGE: &str = "explaincron [FLAGS] [ARGS]
     explaincron 3-5 1/4 \\* \\* \\*
-    explaincron -s '* * * FEB SUN'";
+    explaincron '* * * FEB SUN'";
 
 pub fn app() -> App<'static, 'static> {
     return App::new("explaincron")
@@ -51,12 +51,17 @@ pub fn app() -> App<'static, 'static> {
         .author("Fredrik Pe <fredrikpei@gmail.com>")
         .about(ABOUT)
         .arg(
-            Arg::with_name("MINUTE")
-                .help("Allowed values 0-59")
-                .default_value("*")
-                .required(false)
+            Arg::with_name("MINUTE (or complete schedule)")
+                .help("Allowed values 0-59. Or a complete schedule.")
+                .required(true)
                 .index(1)
-                .validator(|input| input_validator(input, parser::minute)),
+                .validator(|input| {
+                    if input.contains(char::is_whitespace) {
+                        schedule_validator(input)
+                    } else {
+                        input_validator(input, parser::minute)
+                    }
+                }),
         )
         .arg(
             Arg::with_name("HOUR")
@@ -89,15 +94,5 @@ pub fn app() -> App<'static, 'static> {
                 .required(false)
                 .index(5)
                 .validator(|input| input_validator(input, parser::day_of_week)),
-        )
-        .arg(
-            Arg::with_name("schedule")
-                .short("s")
-                .long("schedule")
-                .value_name("SCHEDULE")
-                .takes_value(true)
-                .multiple(false)
-                .help("Provide complete schedule in one argument")
-                .validator(schedule_validator),
         );
 }

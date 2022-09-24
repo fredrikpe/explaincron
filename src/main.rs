@@ -231,10 +231,13 @@ fn human_readable_schedule(schedule: Schedule) -> String {
 fn main() -> Result<(), String> {
     let matches = clap_app::app().get_matches();
 
-    let schedule = match matches.value_of("schedule") {
-        Some(s) => Schedule::from_str(s).unwrap(),
-        None => Schedule {
-            minute: input_from(matches.value_of("MINUTE").unwrap(), parser::minute)?,
+    let first_arg = matches.value_of("MINUTE (or complete schedule)").unwrap();
+
+    let schedule = if first_arg.contains(char::is_whitespace) {
+        Schedule::from_str(first_arg).unwrap()
+    } else {
+        Schedule {
+            minute: input_from(first_arg, parser::minute)?,
             hour: input_from(matches.value_of("HOUR").unwrap(), parser::hour)?,
             day_of_month: input_from(
                 matches.value_of("DAY (of month)").unwrap(),
@@ -245,7 +248,7 @@ fn main() -> Result<(), String> {
                 matches.value_of("DAY (of week)").unwrap(),
                 parser::day_of_week,
             )?,
-        },
+        }
     };
 
     println!("{}", human_readable_schedule(schedule));
