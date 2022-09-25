@@ -1,14 +1,15 @@
 mod clap_app;
 mod parser;
 
+use parser::CronElem;
 use parser::CronElem::{List, Range, Single, Step, Wildcard};
 
 struct Schedule {
-    minute: parser::CronElem,
-    hour: parser::CronElem,
-    day_of_month: parser::CronElem,
-    month: parser::CronElem,
-    day_of_week: parser::CronElem,
+    minute: CronElem,
+    hour: CronElem,
+    day_of_month: CronElem,
+    month: CronElem,
+    day_of_week: CronElem,
 }
 
 impl Schedule {
@@ -19,11 +20,11 @@ impl Schedule {
         }
 
         Ok(Schedule {
-            minute: input_from(split[0], parser::minute)?,
-            hour: input_from(split[1], parser::hour)?,
-            day_of_month: input_from(split[2], parser::day_of_month)?,
-            month: input_from(split[3], parser::month)?,
-            day_of_week: input_from(split[4], parser::day_of_week)?,
+            minute: CronElem::from_str(split[0], parser::minute)?,
+            hour: CronElem::from_str(split[1], parser::hour)?,
+            day_of_month: CronElem::from_str(split[2], parser::day_of_month)?,
+            month: CronElem::from_str(split[3], parser::month)?,
+            day_of_week: CronElem::from_str(split[4], parser::day_of_week)?,
         })
     }
 
@@ -46,27 +47,13 @@ fn random_cron_elem(min: i32, max: i32) -> parser::CronElem {
             4 => List((0..4).map(|_| fastrand::i32(min..=max)).collect()),
             _ => List((0..2).map(|_| fastrand::i32(min..=max)).collect()),
         },
-        1 => Range(fastrand::i32(min..=max), fastrand::i32(min..=max)),
+        1 => { 
+            let start = fastrand::i32(min..max);
+            Range(start, fastrand::i32(start..=max))
+        },
         2 => Single(fastrand::i32(min..=max)),
         3 => Step(Some(fastrand::i32(min..=max)), fastrand::i32(min..=max)),
         _ => Wildcard,
-    }
-}
-
-fn input_from(
-    value: &str,
-    elem_parser: fn(&str) -> Result<i32, String>,
-) -> Result<parser::CronElem, String> {
-    if value.contains('/') {
-        parser::step(value.split('/'), elem_parser)
-    } else if value.contains('-') {
-        parser::range(value.split('-'), elem_parser)
-    } else if value.contains(',') {
-        parser::list(value.split(','), elem_parser)
-    } else if value == "*" {
-        Ok(Wildcard)
-    } else {
-        Ok(Single(elem_parser(value)?))
     }
 }
 
@@ -90,15 +77,13 @@ fn ordinal(i: i32) -> String {
 
 fn day_of_week_string(i: i32) -> String {
     match i {
-        0 => "Sunday".to_string(),
         1 => "Monday".to_string(),
         2 => "Tuesday".to_string(),
         3 => "Wednesday".to_string(),
         4 => "Thursday".to_string(),
         5 => "Friday".to_string(),
         6 => "Saturday".to_string(),
-        7 => "Sunday".to_string(),
-        _ => panic!("should be validated"),
+        _ => "Sunday".to_string(),
     }
 }
 
@@ -270,14 +255,14 @@ fn main() -> Result<(), String> {
             Schedule::from_str(first_arg).unwrap()
         } else {
             Schedule {
-                minute: input_from(first_arg, parser::minute)?,
-                hour: input_from(matches.value_of("HOUR").unwrap(), parser::hour)?,
-                day_of_month: input_from(
+                minute: CronElem::from_str(first_arg, parser::minute)?,
+                hour: CronElem::from_str(matches.value_of("HOUR").unwrap(), parser::hour)?,
+                day_of_month: CronElem::from_str(
                     matches.value_of("DAY (of month)").unwrap(),
                     parser::day_of_month,
                 )?,
-                month: input_from(matches.value_of("MONTH").unwrap(), parser::month)?,
-                day_of_week: input_from(
+                month: CronElem::from_str(matches.value_of("MONTH").unwrap(), parser::month)?,
+                day_of_week: CronElem::from_str(
                     matches.value_of("DAY (of week)").unwrap(),
                     parser::day_of_week,
                 )?,

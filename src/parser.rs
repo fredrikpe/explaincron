@@ -11,6 +11,25 @@ pub enum CronElem {
     Wildcard,
 }
 
+impl CronElem {
+    pub fn from_str(
+        value: &str,
+        elem_parser: fn(&str) -> Result<i32, String>,
+    ) -> Result<CronElem, String> {
+        if value.contains('/') {
+            step(value.split('/'), elem_parser)
+        } else if value.contains('-') {
+            range(value.split('-'), elem_parser)
+        } else if value.contains(',') {
+            list(value.split(','), elem_parser)
+        } else if value == "*" {
+            Ok(CronElem::Wildcard)
+        } else {
+            Ok(CronElem::Single(elem_parser(value)?))
+        }
+    }
+}
+
 impl std::fmt::Display for CronElem {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         let str = match self {
@@ -31,31 +50,37 @@ impl std::fmt::Display for CronElem {
     }
 }
 
-pub fn list(
-    split: std::str::Split<char>,
-    elem_parser: fn(&str) -> Result<i32, String>,
-) -> Result<CronElem, String> {
+fn list<'a, I>(iter: I, elem_parser: fn(&str) -> Result<i32, String>) -> Result<CronElem, String>
+where
+    I: Iterator<Item = &'a str>,
+{
     Ok(CronElem::List(
-        split.map(elem_parser).collect::<Result<Vec<_>, _>>()?,
+        iter.map(elem_parser).collect::<Result<Vec<_>, _>>()?,
     ))
 }
 
-pub fn range(
-    split: std::str::Split<char>,
-    elem_parser: fn(&str) -> Result<i32, String>,
-) -> Result<CronElem, String> {
-    let l = split.map(elem_parser).collect::<Result<Vec<_>, _>>()?;
+fn range<'a, I>(iter: I, elem_parser: fn(&str) -> Result<i32, String>) -> Result<CronElem, String>
+where
+    I: Iterator<Item = &'a str>,
+{
+    let l = iter.map(elem_parser).collect::<Result<Vec<_>, _>>()?;
     if l.len() != 2 {
         return Err(format!("range can have only two elements"));
+    }
+    if l[0] > l[1] {
+        return Err(format!("range error {} is bigger than {}", l[0], l[1]));
     }
     Ok(CronElem::Range(l[0], l[1]))
 }
 
-pub fn step(
-    mut split: std::str::Split<char>,
+fn step<'a, I>(
+    mut iter: I,
     elem_parser: fn(&str) -> Result<i32, String>,
-) -> Result<CronElem, String> {
-    let start = split
+) -> Result<CronElem, String>
+where
+    I: Iterator<Item = &'a str>,
+{
+    let start = iter
         .next()
         .ok_or(format!("step must have two elements"))
         .map(|s| {
@@ -65,11 +90,11 @@ pub fn step(
                 Some(elem_parser(s).ok()?)
             }
         })?;
-    let step = split
+    let step = iter
         .next()
         .ok_or(format!("step must have two elements"))
         .and_then(elem_parser)?;
-    if split.next().is_some() {
+    if iter.next().is_some() {
         return Err(format!("step must have two elements"));
     }
 

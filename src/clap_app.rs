@@ -6,17 +6,7 @@ fn input_validator(
     input: String,
     elem_parser: fn(&str) -> Result<i32, String>,
 ) -> Result<(), String> {
-    return if input.contains(',') {
-        parser::list(input.split(','), elem_parser).map(|_| ())
-    } else if input.contains('-') {
-        parser::range(input.split('-'), elem_parser).map(|_| ())
-    } else if input.contains('/') {
-        parser::step(input.split('/'), elem_parser).map(|_| ())
-    } else if input == "*" {
-        Ok(())
-    } else {
-        elem_parser(&input).map(|_| ())
-    };
+    parser::CronElem::from_str(&input, elem_parser).map(|_| ())
 }
 
 fn schedule_validator(schedule_input: String) -> Result<(), String> {
