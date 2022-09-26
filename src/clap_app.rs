@@ -1,27 +1,6 @@
 use clap::{App, Arg};
 
-use crate::parser;
-
-fn input_validator(
-    input: String,
-    elem_parser: fn(&str) -> Result<i32, String>,
-) -> Result<(), String> {
-    parser::CronElem::from_str(&input, elem_parser).map(|_| ())
-}
-
-fn schedule_validator(schedule_input: String) -> Result<(), String> {
-    let parts = schedule_input.split_whitespace().collect::<Vec<&str>>();
-    if parts.len() != 5 {
-        return Err(format!("schedule does not contain 5 parts"));
-    }
-    input_validator(parts[0].to_string(), parser::minute)?;
-    input_validator(parts[1].to_string(), parser::hour)?;
-    input_validator(parts[2].to_string(), parser::day_of_month)?;
-    input_validator(parts[3].to_string(), parser::month)?;
-    input_validator(parts[4].to_string(), parser::day_of_week)?;
-
-    Ok(())
-}
+use crate::cron;
 
 const ABOUT: &str = "\nExplain cron schedules in human readable form.
 cron syntax:
@@ -47,9 +26,9 @@ pub fn app() -> App<'static, 'static> {
                 .index(1)
                 .validator(|input| {
                     if input.contains(char::is_whitespace) {
-                        schedule_validator(input)
+                        cron::Schedule::from_str(&input).map(|_| ())
                     } else {
-                        input_validator(input, parser::minute)
+                        cron::Minute::from_str(&input).map(|_| ())
                     }
                 }),
         )
@@ -59,7 +38,7 @@ pub fn app() -> App<'static, 'static> {
                 .default_value("*")
                 .required(false)
                 .index(2)
-                .validator(|input| input_validator(input, parser::hour)),
+                .validator(|input| cron::Hour::from_str(&input).map(|_| ())),
         )
         .arg(
             Arg::with_name("DAY (of month)")
@@ -67,7 +46,7 @@ pub fn app() -> App<'static, 'static> {
                 .default_value("*")
                 .required(false)
                 .index(3)
-                .validator(|input| input_validator(input, parser::day_of_month)),
+                .validator(|input| cron::DayOfMonth::from_str(&input).map(|_| ())),
         )
         .arg(
             Arg::with_name("MONTH")
@@ -75,7 +54,7 @@ pub fn app() -> App<'static, 'static> {
                 .default_value("*")
                 .required(false)
                 .index(4)
-                .validator(|input| input_validator(input, parser::month)),
+                .validator(|input| cron::Month::from_str(&input).map(|_| ())),
         )
         .arg(
             Arg::with_name("DAY (of week)")
@@ -83,7 +62,7 @@ pub fn app() -> App<'static, 'static> {
                 .default_value("*")
                 .required(false)
                 .index(5)
-                .validator(|input| input_validator(input, parser::day_of_week)),
+                .validator(|input| cron::DayOfWeek::from_str(&input).map(|_| ())),
         )
         .arg(
             Arg::with_name("random")

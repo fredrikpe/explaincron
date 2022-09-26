@@ -1,56 +1,22 @@
 mod clap_app;
-mod parser;
+mod cron;
 
-use parser::CronElem;
-use parser::CronElem::{List, Range, Single, Step, Wildcard};
+use std::borrow::Borrow;
 
-struct Schedule {
-    minute: CronElem,
-    hour: CronElem,
-    day_of_month: CronElem,
-    month: CronElem,
-    day_of_week: CronElem,
-}
+use cron::Value::{List, Range, Single, Step, Wildcard};
+use cron::{DayOfMonth, DayOfWeek, Hour, Minute, Month, Schedule};
 
-impl Schedule {
-    fn from_str(s: &str) -> Result<Schedule, String> {
-        let split: Vec<&str> = s.split(" ").collect();
-        if split.len() != 5 {
-            return Err("malformed schedule: need 5 components".to_string());
-        }
-
-        Ok(Schedule {
-            minute: CronElem::from_str(split[0], parser::minute)?,
-            hour: CronElem::from_str(split[1], parser::hour)?,
-            day_of_month: CronElem::from_str(split[2], parser::day_of_month)?,
-            month: CronElem::from_str(split[3], parser::month)?,
-            day_of_week: CronElem::from_str(split[4], parser::day_of_week)?,
-        })
-    }
-
-    fn to_string(&self) -> String {
-        format!(
-            "{} {} {} {} {}",
-            self.minute.to_string(),
-            self.hour.to_string(),
-            self.day_of_month.to_string(),
-            self.month.to_string(),
-            self.day_of_week.to_string(),
-        )
-    }
-}
-
-fn random_cron_elem(min: i32, max: i32) -> parser::CronElem {
+fn random_cron_elem(min: i32, max: i32) -> cron::Value {
     match fastrand::i32(0..=10) {
         0 => match fastrand::i32(2..4) {
             3 => List((0..3).map(|_| fastrand::i32(min..=max)).collect()),
             4 => List((0..4).map(|_| fastrand::i32(min..=max)).collect()),
             _ => List((0..2).map(|_| fastrand::i32(min..=max)).collect()),
         },
-        1 => { 
+        1 => {
             let start = fastrand::i32(min..max);
             Range(start, fastrand::i32(start..=max))
-        },
+        }
         2 => Single(fastrand::i32(min..=max)),
         3 => Step(Some(fastrand::i32(min..=max)), fastrand::i32(min..=max)),
         _ => Wildcard,
@@ -89,7 +55,6 @@ fn day_of_week_string(i: i32) -> String {
 
 fn month_string(i: i32) -> String {
     match i {
-        1 => "January".to_string(),
         2 => "February".to_string(),
         3 => "March".to_string(),
         4 => "April".to_string(),
@@ -105,28 +70,38 @@ fn month_string(i: i32) -> String {
     }
 }
 
-fn comma_list(list: &Vec<i32>, f: fn(i32) -> String) -> String {
-    match list.len() {
-        0 => "".to_string(),
-        1 => format!("{}", f(list[0])),
-        2 => format!("{} and {}", f(list[0]), f(list[1])),
-        _ => {
-            let (last, elements) = list.split_last().unwrap();
-            format!(
-                "{}, and {last}",
-                elements
-                    .iter()
-                    .map(|i| f(*i))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            )
+trait OxfordJoinExt: Iterator {
+    fn join_oxford(self) -> String
+    where
+        Self::Item: Borrow<str>,
+        Self: Sized,
+    {
+        let mut s = String::new();
+
+        let mut peekable = self.peekable();
+        while let Some(elem) = peekable.next() {
+            if peekable.peek().is_none() {
+                if s.len() > 1 {
+                    s.push_str(",");
+                }
+                if s.len() > 0 {
+                    s.push_str(" and ");
+                }
+            } else if s.len() > 0 {
+                s.push_str(", ");
+            }
+
+            s.push_str(elem.borrow());
         }
+        s
     }
 }
 
+impl<I: Iterator> OxfordJoinExt for I {}
+
 fn human_readable_schedule(schedule: Schedule) -> String {
     let mut result = "".to_string();
-    match schedule.minute {
+    match schedule.minute.value {
         Step(start, step) => result.push_str(&format!(
             "At every {}minute{}",
             ordinal(step),
@@ -140,12 +115,12 @@ fn human_readable_schedule(schedule: Schedule) -> String {
         }
         List(list) => result.push_str(&format!(
             "At minute {}",
-            comma_list(&list, |i| i.to_string())
+            list.into_iter().map(|i| i.to_string()).join_oxford()
         )),
         Single(single) => result.push_str(&format!("At minute {single}")),
         Wildcard => result.push_str(&format!("At every minute")),
     }
-    match schedule.hour {
+    match schedule.hour.value {
         Step(start, step) => result.push_str(&format!(
             " past every {}hour{}",
             ordinal(step),
@@ -159,12 +134,12 @@ fn human_readable_schedule(schedule: Schedule) -> String {
         }
         List(list) => result.push_str(&format!(
             " past hour {}",
-            comma_list(&list, |i| i.to_string())
+            list.into_iter().map(|i| i.to_string()).join_oxford()
         )),
         Single(single) => result.push_str(&format!(" past hour {single}")),
         Wildcard => (),
     }
-    match schedule.day_of_month {
+    match schedule.day_of_month.value {
         Step(start, step) => result.push_str(&format!(
             " on every {}day-of-month{}",
             ordinal(step),
@@ -178,12 +153,12 @@ fn human_readable_schedule(schedule: Schedule) -> String {
         )),
         List(ref list) => result.push_str(&format!(
             " on day-of-month {}",
-            comma_list(&list, |i| i.to_string())
+            list.into_iter().map(|i| i.to_string()).join_oxford()
         )),
         Single(single) => result.push_str(&format!(" on day-of-month {single}")),
         Wildcard => (),
     }
-    match schedule.month {
+    match schedule.month.value {
         Step(start, step) => result.push_str(&format!(
             " in every {}month{}",
             ordinal(step),
@@ -197,16 +172,19 @@ fn human_readable_schedule(schedule: Schedule) -> String {
             month_string(start),
             month_string(stop)
         )),
-        List(list) => result.push_str(&format!(" in {}", comma_list(&list, |i| month_string(i)))),
+        List(list) => result.push_str(&format!(
+            " in {}",
+            list.into_iter().map(|i| month_string(i)).join_oxford()
+        )),
         Single(single) => result.push_str(&format!(" in {}", month_string(single))),
         Wildcard => (),
     }
-    let day_of_week_prefix = match schedule.day_of_month {
+    let day_of_week_prefix = match schedule.day_of_month.value {
         Step(None, _) => "if it's ",
         Wildcard => "",
         _ => "and ",
     };
-    match schedule.day_of_week {
+    match schedule.day_of_week.value {
         Step(start, step) => result.push_str(&format!(
             " {}on every {}day-of-week{}",
             day_of_week_prefix,
@@ -225,7 +203,9 @@ fn human_readable_schedule(schedule: Schedule) -> String {
         List(list) => result.push_str(&format!(
             " {}on {}",
             day_of_week_prefix,
-            comma_list(&list, |i| day_of_week_string(i))
+            list.into_iter()
+                .map(|i| day_of_week_string(i))
+                .join_oxford()
         )),
         Single(single) => result.push_str(&format!(
             " {}on {}",
@@ -243,11 +223,21 @@ fn main() -> Result<(), String> {
 
     let schedule = if matches.is_present("random") {
         Schedule {
-            minute: random_cron_elem(0, 59),
-            hour: random_cron_elem(0, 23),
-            day_of_month: random_cron_elem(1, 31),
-            month: random_cron_elem(1, 12),
-            day_of_week: random_cron_elem(0, 6),
+            minute: Minute {
+                value: random_cron_elem(0, 59),
+            },
+            hour: Hour {
+                value: random_cron_elem(0, 23),
+            },
+            day_of_month: DayOfMonth {
+                value: random_cron_elem(1, 31),
+            },
+            month: Month {
+                value: random_cron_elem(1, 12),
+            },
+            day_of_week: DayOfWeek {
+                value: random_cron_elem(0, 6),
+            },
         }
     } else {
         let first_arg = matches.value_of("MINUTE (or complete schedule)").unwrap();
@@ -255,17 +245,11 @@ fn main() -> Result<(), String> {
             Schedule::from_str(first_arg).unwrap()
         } else {
             Schedule {
-                minute: CronElem::from_str(first_arg, parser::minute)?,
-                hour: CronElem::from_str(matches.value_of("HOUR").unwrap(), parser::hour)?,
-                day_of_month: CronElem::from_str(
-                    matches.value_of("DAY (of month)").unwrap(),
-                    parser::day_of_month,
-                )?,
-                month: CronElem::from_str(matches.value_of("MONTH").unwrap(), parser::month)?,
-                day_of_week: CronElem::from_str(
-                    matches.value_of("DAY (of week)").unwrap(),
-                    parser::day_of_week,
-                )?,
+                minute: Minute::from_str(first_arg)?,
+                hour: Hour::from_str(matches.value_of("HOUR").unwrap())?,
+                day_of_month: DayOfMonth::from_str(matches.value_of("DAY (of month)").unwrap())?,
+                month: Month::from_str(matches.value_of("MONTH").unwrap())?,
+                day_of_week: DayOfWeek::from_str(matches.value_of("DAY (of week)").unwrap())?,
             }
         }
     };
@@ -379,5 +363,13 @@ mod tests {
             human_readable_schedule(Schedule::from_str("* * 1-3 * 1").unwrap()),
             "At every minute on every day-of-month from 1 through 3 and on Monday."
         );
+    }
+
+    #[test]
+    fn join_oxford() {
+        assert_eq!(Vec::<&str>::new().into_iter().join_oxford(), "");
+        assert_eq!(vec!["a"].into_iter().join_oxford(), "a");
+        assert_eq!(vec!["a", "b"].into_iter().join_oxford(), "a and b");
+        assert_eq!(vec!["a", "b", "c"].into_iter().join_oxford(), "a, b, and c");
     }
 }
