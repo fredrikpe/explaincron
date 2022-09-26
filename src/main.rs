@@ -1,8 +1,6 @@
 mod clap_app;
 mod cron;
 
-use std::borrow::Borrow;
-
 use cron::Value::{List, Range, Single, Step, Wildcard};
 use cron::{DayOfMonth, DayOfWeek, Hour, Minute, Month, Schedule};
 
@@ -28,17 +26,17 @@ fn ordinal(i: i32) -> String {
         return "".to_string();
     }
 
-    let s = i.to_string();
-
+    let mut s = i.to_string();
     if s.ends_with('1') && !s.ends_with("11") {
-        format!("{}st ", i)
+        s.push_str("st ")
     } else if s.ends_with('2') && !s.ends_with("12") {
-        format!("{}nd ", i)
+        s.push_str("nd ")
     } else if s.ends_with('3') && !s.ends_with("13") {
-        format!("{}rd ", i)
+        s.push_str("rd ")
     } else {
-        format!("{}th ", i)
+        s.push_str("th ")
     }
+    s
 }
 
 fn day_of_week_string(i: i32) -> String {
@@ -70,34 +68,24 @@ fn month_string(i: i32) -> String {
     }
 }
 
-trait OxfordJoinExt: Iterator {
-    fn join_oxford(self) -> String
-    where
-        Self::Item: Borrow<str>,
-        Self: Sized,
-    {
-        let mut s = String::new();
-
-        let mut peekable = self.peekable();
-        while let Some(elem) = peekable.next() {
-            if peekable.peek().is_none() {
-                if s.len() > 1 {
-                    s.push_str(",");
+fn join_oxford(vec: Vec<i32>, to_string: fn(i32) -> String) -> String {
+    match vec.as_slice().split_last() {
+        None => String::new(),
+        Some((last, [])) => format!("{}", to_string(*last)),
+        Some((last, [i])) => format!("{} and {}", to_string(*i), to_string(*last)),
+        Some((last, first)) => format!(
+            "{}, and {}",
+            first.iter().fold(String::new(), |mut a, b| {
+                if a.len() > 0 {
+                    a.push_str(", ");
                 }
-                if s.len() > 0 {
-                    s.push_str(" and ");
-                }
-            } else if s.len() > 0 {
-                s.push_str(", ");
-            }
-
-            s.push_str(elem.borrow());
-        }
-        s
+                a.push_str(&to_string(*b));
+                a
+            }),
+            to_string(*last)
+        ),
     }
 }
-
-impl<I: Iterator> OxfordJoinExt for I {}
 
 fn human_readable_schedule(schedule: Schedule) -> String {
     let mut result = "".to_string();
@@ -115,7 +103,7 @@ fn human_readable_schedule(schedule: Schedule) -> String {
         }
         List(list) => result.push_str(&format!(
             "At minute {}",
-            list.into_iter().map(|i| i.to_string()).join_oxford()
+            join_oxford(list, |i| i.to_string())
         )),
         Single(single) => result.push_str(&format!("At minute {single}")),
         Wildcard => result.push_str(&format!("At every minute")),
@@ -134,7 +122,7 @@ fn human_readable_schedule(schedule: Schedule) -> String {
         }
         List(list) => result.push_str(&format!(
             " past hour {}",
-            list.into_iter().map(|i| i.to_string()).join_oxford()
+            join_oxford(list, |i| i.to_string())
         )),
         Single(single) => result.push_str(&format!(" past hour {single}")),
         Wildcard => (),
@@ -153,7 +141,7 @@ fn human_readable_schedule(schedule: Schedule) -> String {
         )),
         List(ref list) => result.push_str(&format!(
             " on day-of-month {}",
-            list.into_iter().map(|i| i.to_string()).join_oxford()
+            join_oxford(list.to_vec(), |i| i.to_string())
         )),
         Single(single) => result.push_str(&format!(" on day-of-month {single}")),
         Wildcard => (),
@@ -174,7 +162,7 @@ fn human_readable_schedule(schedule: Schedule) -> String {
         )),
         List(list) => result.push_str(&format!(
             " in {}",
-            list.into_iter().map(|i| month_string(i)).join_oxford()
+            join_oxford(list, |i| month_string(i))
         )),
         Single(single) => result.push_str(&format!(" in {}", month_string(single))),
         Wildcard => (),
@@ -203,9 +191,7 @@ fn human_readable_schedule(schedule: Schedule) -> String {
         List(list) => result.push_str(&format!(
             " {}on {}",
             day_of_week_prefix,
-            list.into_iter()
-                .map(|i| day_of_week_string(i))
-                .join_oxford()
+            join_oxford(list, |i| day_of_week_string(i))
         )),
         Single(single) => result.push_str(&format!(
             " {}on {}",
@@ -366,10 +352,10 @@ mod tests {
     }
 
     #[test]
-    fn join_oxford() {
-        assert_eq!(Vec::<&str>::new().into_iter().join_oxford(), "");
-        assert_eq!(vec!["a"].into_iter().join_oxford(), "a");
-        assert_eq!(vec!["a", "b"].into_iter().join_oxford(), "a and b");
-        assert_eq!(vec!["a", "b", "c"].into_iter().join_oxford(), "a, b, and c");
+    fn join_oxford_test() {
+        assert_eq!(join_oxford(Vec::<i32>::new(), |i| i.to_string()), "");
+        assert_eq!(join_oxford(vec![1], |i| i.to_string()), "1");
+        assert_eq!(join_oxford(vec![1, 2], |i| i.to_string()), "1 and 2");
+        assert_eq!(join_oxford(vec![1, 2, 3], |i| i.to_string()), "1, 2, and 3");
     }
 }
