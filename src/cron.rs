@@ -37,6 +37,127 @@ impl Schedule {
     }
 }
 
+pub fn human_readable(schedule: &Schedule) -> String {
+    let mut result = String::new();
+
+    match &schedule.minute.value {
+        Value::Step(start, step) => result.push_str(&format!(
+            "At every {}minute{}",
+            ordinal(*step),
+            match start {
+                Some(i) => format!(" from {i} through 59"),
+                None => "".to_string(),
+            }
+        )),
+        Value::Range(start, stop) => {
+            result.push_str(&format!("At every minute from {start} through {stop}"))
+        }
+        Value::List(list) => result.push_str(&format!(
+            "At minute {}",
+            join_oxford(list, |i| i.to_string())
+        )),
+        Value::Single(single) => result.push_str(&format!("At minute {single}")),
+        Value::Wildcard => result.push_str(&format!("At every minute")),
+    }
+
+    match &schedule.hour.value {
+        Value::Step(start, step) => result.push_str(&format!(
+            " past every {}hour{}",
+            ordinal(*step),
+            match start {
+                Some(i) => format!(" from {i} through 23"),
+                None => "".to_string(),
+            }
+        )),
+        Value::Range(start, stop) => {
+            result.push_str(&format!(" past every hour from {start} through {stop}"))
+        }
+        Value::List(list) => result.push_str(&format!(
+            " past hour {}",
+            join_oxford(list, |i| i.to_string())
+        )),
+        Value::Single(single) => result.push_str(&format!(" past hour {single}")),
+        Value::Wildcard => (),
+    }
+
+    match &schedule.day_of_month.value {
+        Value::Step(start, step) => result.push_str(&format!(
+            " on every {}day-of-month{}",
+            ordinal(*step),
+            match start {
+                Some(i) => format!(" from {i} through 31"),
+                None => "".to_string(),
+            }
+        )),
+        Value::Range(start, stop) => result.push_str(&format!(
+            " on every day-of-month from {start} through {stop}"
+        )),
+        Value::List(ref list) => result.push_str(&format!(
+            " on day-of-month {}",
+            join_oxford(list, |i| i.to_string())
+        )),
+        Value::Single(single) => result.push_str(&format!(" on day-of-month {single}")),
+        Value::Wildcard => (),
+    }
+
+    match &schedule.month.value {
+        Value::Step(start, step) => result.push_str(&format!(
+            " in every {}month{}",
+            ordinal(*step),
+            match start {
+                Some(i) => format!(" from {} through December", month_string(*i)),
+                None => "".to_string(),
+            }
+        )),
+        Value::Range(start, stop) => result.push_str(&format!(
+            " in every month from {} through {}",
+            month_string(*start),
+            month_string(*stop)
+        )),
+        Value::List(list) => {
+            result.push_str(&format!(" in {}", join_oxford(list, |i| month_string(i))))
+        }
+        Value::Single(single) => result.push_str(&format!(" in {}", month_string(*single))),
+        Value::Wildcard => (),
+    }
+
+    let day_of_week_prefix = match schedule.day_of_month.value {
+        Value::Step(None, _) => "if it's ",
+        Value::Wildcard => "",
+        _ => "and ",
+    };
+    match &schedule.day_of_week.value {
+        Value::Step(start, step) => result.push_str(&format!(
+            " {}on every {}day-of-week{}",
+            day_of_week_prefix,
+            ordinal(*step),
+            match start {
+                Some(i) => format!(" from {} through Sunday", day_of_week_string(*i)),
+                None => "".to_string(),
+            }
+        )),
+        Value::Range(start, stop) => result.push_str(&format!(
+            " {}on every day-of-week from {} through {}",
+            day_of_week_prefix,
+            day_of_week_string(*start),
+            day_of_week_string(*stop)
+        )),
+        Value::List(list) => result.push_str(&format!(
+            " {}on {}",
+            day_of_week_prefix,
+            join_oxford(list, |i| day_of_week_string(i))
+        )),
+        Value::Single(single) => result.push_str(&format!(
+            " {}on {}",
+            day_of_week_prefix,
+            day_of_week_string(*single)
+        )),
+        Value::Wildcard => (),
+    }
+    result.push_str(".");
+    result
+}
+
 pub struct Minute {
     pub value: Value,
 }
@@ -121,6 +242,23 @@ impl Value {
         } else {
             Ok(Value::Single(elem_parser(value)?))
         }
+    }
+}
+
+pub fn random_value(min: i32, max: i32) -> Value {
+    match fastrand::i32(0..=10) {
+        0 => match fastrand::i32(2..4) {
+            3 => Value::List((0..3).map(|_| fastrand::i32(min..=max)).collect()),
+            4 => Value::List((0..4).map(|_| fastrand::i32(min..=max)).collect()),
+            _ => Value::List((0..2).map(|_| fastrand::i32(min..=max)).collect()),
+        },
+        1 => {
+            let start = fastrand::i32(min..max);
+            Value::Range(start, fastrand::i32(start..=max))
+        }
+        2 => Value::Single(fastrand::i32(min..=max)),
+        3 => Value::Step(Some(fastrand::i32(min..=max)), fastrand::i32(min..=max)),
+        _ => Value::Wildcard,
     }
 }
 
@@ -255,5 +393,186 @@ fn parse_day_of_week(elem: &str) -> Result<i32, String> {
                     Err(format!("{i} is not in 0-6 or MON-SUN"))
                 }
             }),
+    }
+}
+
+fn ordinal(i: i32) -> String {
+    if i == 1i32 {
+        return "".to_string();
+    }
+
+    let mut s = i.to_string();
+    if s.ends_with('1') && !s.ends_with("11") {
+        s.push_str("st ")
+    } else if s.ends_with('2') && !s.ends_with("12") {
+        s.push_str("nd ")
+    } else if s.ends_with('3') && !s.ends_with("13") {
+        s.push_str("rd ")
+    } else {
+        s.push_str("th ")
+    }
+    s
+}
+
+fn day_of_week_string(i: i32) -> String {
+    match i {
+        1 => "Monday".to_string(),
+        2 => "Tuesday".to_string(),
+        3 => "Wednesday".to_string(),
+        4 => "Thursday".to_string(),
+        5 => "Friday".to_string(),
+        6 => "Saturday".to_string(),
+        _ => "Sunday".to_string(),
+    }
+}
+
+fn month_string(i: i32) -> String {
+    match i {
+        2 => "February".to_string(),
+        3 => "March".to_string(),
+        4 => "April".to_string(),
+        5 => "May".to_string(),
+        6 => "June".to_string(),
+        7 => "July".to_string(),
+        8 => "August".to_string(),
+        9 => "September".to_string(),
+        10 => "October".to_string(),
+        11 => "November".to_string(),
+        12 => "December".to_string(),
+        _ => "January".to_string(),
+    }
+}
+
+fn join_oxford(vec: &Vec<i32>, to_string: fn(i32) -> String) -> String {
+    match vec.as_slice().split_last() {
+        None => String::new(),
+        Some((last, [])) => format!("{}", to_string(*last)),
+        Some((last, [i])) => format!("{} and {}", to_string(*i), to_string(*last)),
+        Some((last, first)) => format!(
+            "{}, and {}",
+            first.iter().fold(String::new(), |mut a, b| {
+                if a.len() > 0 {
+                    a.push_str(", ");
+                }
+                a.push_str(&to_string(*b));
+                a
+            }),
+            to_string(*last)
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_wildcards() {
+        assert_eq!(
+            human_readable(&Schedule::from_str("* * * * *").unwrap()),
+            "At every minute."
+        );
+    }
+
+    #[test]
+    fn minute_1() {
+        assert_eq!(
+            human_readable(&Schedule::from_str("1 * * * *").unwrap()),
+            "At minute 1."
+        );
+    }
+
+    #[test]
+    fn minute_2() {
+        assert_eq!(
+            human_readable(&Schedule::from_str("2 * * * *").unwrap()),
+            "At minute 2."
+        );
+    }
+
+    #[test]
+    fn minute_step() {
+        assert_eq!(
+            human_readable(&Schedule::from_str("2/3 * * * *").unwrap()),
+            "At every 3rd minute from 2 through 59."
+        );
+    }
+
+    #[test]
+    fn minute_step_hour_23() {
+        assert_eq!(
+            human_readable(&Schedule::from_str("2/3 23 * * *").unwrap()),
+            "At every 3rd minute from 2 through 59 past hour 23."
+        );
+    }
+
+    #[test]
+    fn minute_range() {
+        assert_eq!(
+            human_readable(&Schedule::from_str("24-39 * * * *").unwrap()),
+            "At every minute from 24 through 39."
+        );
+    }
+
+    #[test]
+    fn minute_list() {
+        assert_eq!(
+            human_readable(&Schedule::from_str("24,39,42,13 * * * *").unwrap()),
+            "At minute 24, 39, 42, and 13."
+        );
+    }
+
+    #[test]
+    fn day_of_week_step() {
+        assert_eq!(
+            human_readable(&Schedule::from_str("* * * * 4/5").unwrap()),
+            "At every minute on every 5th day-of-week from Thursday through Sunday."
+        );
+    }
+
+    #[test]
+    fn day_of_week_str() {
+        assert_eq!(
+            human_readable(&Schedule::from_str("* * * * WED").unwrap()),
+            "At every minute on Wednesday."
+        );
+    }
+
+    #[test]
+    fn month_str() {
+        assert_eq!(
+            human_readable(&Schedule::from_str("* * * MAY *").unwrap()),
+            "At every minute in May."
+        );
+    }
+
+    #[test]
+    fn cron_bug_test() {
+        // https://crontab.guru/cron-bug.html
+        assert_eq!(
+            human_readable(&Schedule::from_str("* * 3 * 1").unwrap()),
+            "At every minute on day-of-month 3 and on Monday."
+        );
+
+        assert_eq!(
+            human_readable(&Schedule::from_str("* * */2 * 1").unwrap()),
+            "At every minute on every 2nd day-of-month if it's on Monday."
+        );
+
+        assert_eq!(
+            human_readable(&Schedule::from_str("* * 1-3 * 1").unwrap()),
+            "At every minute on every day-of-month from 1 through 3 and on Monday."
+        );
+    }
+
+    #[test]
+    fn join_oxford_test() {
+        assert_eq!(join_oxford(&Vec::<i32>::new(), |i| i.to_string()), "");
+        assert_eq!(join_oxford(&vec![1], |i| i.to_string()), "1");
+        assert_eq!(join_oxford(&vec![1, 2], |i| i.to_string()), "1 and 2");
+        assert_eq!(
+            join_oxford(&vec![1, 2, 3], |i| i.to_string()),
+            "1, 2, and 3"
+        );
     }
 }
