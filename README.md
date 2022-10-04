@@ -7,5 +7,6 @@ Human readable description of cron schedules.
 ## TODO
  - print next occurence
  - Support non-standard cron schedules (7 for sunday, @monthly...)
- - colors?
- - pipe support?
+ - Support seconds?
+ - Colors?
+ - Pipe support?
