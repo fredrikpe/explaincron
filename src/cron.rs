@@ -310,19 +310,19 @@ fn parse_step(input: &str, elem_parser: fn(&str) -> Result<i32, String>) -> Resu
     let start = iter
         .next()
         .ok_or(format!("step must have two elements"))
-        .map(|s| {
+        .and_then(|s| {
             if s == "*" {
-                None
+                Ok(None)
             } else {
-                Some(elem_parser(s).ok()?)
+                elem_parser(s).map(|i| Some(i))
             }
         })?;
     let step = iter
         .next()
-        .ok_or(format!("step must have two elements"))
+        .ok_or(format!("step can only have two elements"))
         .and_then(elem_parser)?;
     if iter.next().is_some() {
-        return Err(format!("step must have two elements"));
+        return Err(format!("step can only have two elements"));
     }
 
     Ok(Value::Step(start, step))
@@ -330,36 +330,36 @@ fn parse_step(input: &str, elem_parser: fn(&str) -> Result<i32, String>) -> Resu
 
 fn parse_minute(elem: &str) -> Result<i32, String> {
     elem.parse::<i32>()
-        .map_err(|_| format!("{elem} is not in 0-59"))
+        .map_err(|_| format!("'{elem}' is not a valid minute (0-59)"))
         .and_then(|i| {
             if i <= 59 && i >= 0 {
                 Ok(i)
             } else {
-                Err(format!("{i} is not in 0-59"))
+                Err(format!("'{i}' is not a valid minute (0-59)"))
             }
         })
 }
 
 fn parse_hour(elem: &str) -> Result<i32, String> {
     elem.parse::<i32>()
-        .map_err(|_| format!("{elem} is not in 0-23"))
+        .map_err(|_| format!("'{elem}' is not a valid hour (0-23)"))
         .and_then(|i| {
             if i <= 23 && i >= 0 {
                 Ok(i)
             } else {
-                Err(format!("{i} is not in 0-23"))
+                Err(format!("'{i}' is not a valid hour (0-23)"))
             }
         })
 }
 
 fn parse_day_of_month(elem: &str) -> Result<i32, String> {
     elem.parse::<i32>()
-        .map_err(|_| format!("{elem} is not in 1-31"))
+        .map_err(|_| format!("'{elem}' is a valid day-of-month (1-31)"))
         .and_then(|i| {
             if i <= 31 && i >= 1 {
                 Ok(i)
             } else {
-                Err(format!("{i} is not in 1-31"))
+                Err(format!("'{i}' is not a valid day-of-month (1-31)"))
             }
         })
 }
@@ -369,12 +369,12 @@ fn parse_month(elem: &str) -> Result<i32, String> {
         Some(i) => Ok((i + 1) as i32),
         None => elem
             .parse::<i32>()
-            .map_err(|_| format!("{elem} is not in 1-12 or JAN-DEC"))
+            .map_err(|_| format!("'{elem}' is not a valid month (1-12 or JAN-DEC)"))
             .and_then(|i| {
                 if i <= 12 && i >= 1 {
                     Ok(i)
                 } else {
-                    Err(format!("{i} is not in 1-12 or JAN-DEC"))
+                    Err(format!("'{i}' is not a valid month (1-12 or JAN-DEC)"))
                 }
             }),
     }
@@ -385,12 +385,12 @@ fn parse_day_of_week(elem: &str) -> Result<i32, String> {
         Some(i) => Ok((i + 1) as i32),
         None => elem
             .parse::<i32>()
-            .map_err(|_| format!("{elem} is not in 0-6 or MON-SUN"))
+            .map_err(|_| format!("'{elem}' is not a valid day-of-week (0-6 or MON-SUN)"))
             .and_then(|i| {
                 if i <= 6 && i >= 0 {
                     Ok(i)
                 } else {
-                    Err(format!("{i} is not in 0-6 or MON-SUN"))
+                    Err(format!("'{i}' is not a valid day-of-week (0-6 or MON-SUN)"))
                 }
             }),
     }

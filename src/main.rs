@@ -25,18 +25,8 @@ fn main() -> Result<(), String> {
             },
         }
     } else {
-        let first_arg = matches.value_of("MINUTE (or complete schedule)").unwrap();
-        if first_arg.contains(char::is_whitespace) {
-            Schedule::from_str(first_arg).unwrap()
-        } else {
-            Schedule {
-                minute: Minute::from_str(first_arg)?,
-                hour: Hour::from_str(matches.value_of("HOUR").unwrap())?,
-                day_of_month: DayOfMonth::from_str(matches.value_of("DAY (of month)").unwrap())?,
-                month: Month::from_str(matches.value_of("MONTH").unwrap())?,
-                day_of_week: DayOfWeek::from_str(matches.value_of("DAY (of week)").unwrap())?,
-            }
-        }
+        let first_arg = matches.value_of("SCHEDULE").unwrap();
+        Schedule::from_str(first_arg).unwrap()
     };
 
     if matches.is_present("random") {
