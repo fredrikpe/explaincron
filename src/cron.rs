@@ -365,7 +365,7 @@ fn parse_day_of_month(elem: &str) -> Result<i32, String> {
 }
 
 fn parse_month(elem: &str) -> Result<i32, String> {
-    match MONTH_NAMES.iter().position(|x| x == &elem) {
+    match MONTH_NAMES.iter().position(|x| x == &elem.to_uppercase()) {
         Some(i) => Ok((i + 1) as i32),
         None => elem
             .parse::<i32>()
@@ -381,7 +381,7 @@ fn parse_month(elem: &str) -> Result<i32, String> {
 }
 
 fn parse_day_of_week(elem: &str) -> Result<i32, String> {
-    match WEEK_DAY_NAMES.iter().position(|x| x == &elem) {
+    match WEEK_DAY_NAMES.iter().position(|x| x == &elem.to_uppercase()) {
         Some(i) => Ok((i + 1) as i32),
         None => elem
             .parse::<i32>()
@@ -573,6 +573,22 @@ mod tests {
         assert_eq!(
             join_oxford(&vec![1, 2, 3], |i| i.to_string()),
             "1, 2, and 3"
+        );
+    }
+
+    #[test]
+    fn ignore_case() {
+        assert_eq!(
+            human_readable(&Schedule::from_str("* * * * Sun").unwrap()),
+            "At every minute on Sunday."
+        );
+        assert_eq!(
+            human_readable(&Schedule::from_str("* * * * mon").unwrap()),
+            "At every minute on Monday."
+        );
+        assert_eq!(
+            human_readable(&Schedule::from_str("* * * mar *").unwrap()),
+            "At every minute in March."
         );
     }
 }
