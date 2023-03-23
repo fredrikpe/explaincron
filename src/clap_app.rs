@@ -12,6 +12,11 @@ cron syntax:
 const USAGE: &str = "explaincron [FLAGS] [ARGS]
     explaincron '3-5 1/4 * FEB SUN'";
 
+fn parse_usize(s: &str) -> Result<usize, String> {
+    s.parse::<usize>()
+        .map_err(|_| format!("'{s}' is not a positive number"))
+}
+
 pub fn app() -> App<'static, 'static> {
     return App::new("explaincron")
         .version("0.1")
@@ -31,5 +36,14 @@ pub fn app() -> App<'static, 'static> {
                 .long("random")
                 .multiple(false)
                 .help("Output a random cron schedule"),
+        )
+        .arg(
+            Arg::with_name("num-next-occurrence")
+                .short("n")
+                .default_value("1")
+                .long("next-occurrence")
+                .multiple(false)
+                .validator(|input| parse_usize(&input).map(|_| ()))
+                .help("Show <n> next occurrences"),
         );
 }

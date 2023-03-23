@@ -16,3 +16,4 @@ categories = ["command-line-utilities"]
 [dependencies]
 clap = "2.33"
 fastrand = "1.8"
+time = { version = "0.3", features = ["local-offset", "macros"] }

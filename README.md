@@ -10,7 +10,7 @@ $ cargo install explaincron
 ```
 
 ## TODO
- - print next occurence
+ - Support stepped ranges (2-31/2)
  - Support non-standard cron schedules (7 for sunday, @monthly...)
  - Support seconds?
  - Colors?

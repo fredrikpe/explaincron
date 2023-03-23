@@ -1,3 +1,6 @@
+use time::ext::NumericalDuration;
+use time::OffsetDateTime;
+
 const MONTH_NAMES: &[&str] = &[
     "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
 ];
@@ -34,6 +37,221 @@ impl Schedule {
             self.month.value.to_string(),
             self.day_of_week.value.to_string(),
         )
+    }
+}
+
+pub fn next_occurrence(
+    from_time: OffsetDateTime,
+    schedule: &Schedule,
+) -> Result<OffsetDateTime, String> {
+    let mut next = from_time;
+
+    let (month, wrapped) = next_month(next.month() as i32, &schedule.month);
+    if month != next.month() {
+        next = next.replace_second(0).unwrap();
+        next = next.replace_hour(0).unwrap();
+        next = next.replace_minute(0).unwrap();
+        next = next.replace_day(1).unwrap();
+        next = next
+            .replace_month(month)
+            .map_err(|e| format!("invalid month {}", e))?;
+        next = next
+            .replace_year(next.year() + if wrapped { 1 } else { 0 })
+            .map_err(|e| format!("invalid year {}", e))?;
+        return next_occurrence(next, &schedule);
+    }
+
+    let current_day = next.day() as i32;
+
+    let (day, wrapped) = match (&schedule.day_of_month.value, &schedule.day_of_week.value) {
+        (Value::Wildcard, _) => next_day_of_week(next, &schedule.day_of_week),
+        (_, Value::Wildcard) => {
+            next_day_of_month(current_day, max_days(next), &schedule.day_of_month)
+        }
+        _ => next_day_union(next, &schedule.day_of_week, &schedule.day_of_month),
+    };
+
+    if day != next.day() as i32 {
+        next = next.replace_second(0).unwrap();
+        next = next.replace_hour(0).unwrap();
+        next = next.replace_minute(0).unwrap();
+        next = next.replace_day(day as u8).unwrap();
+        if wrapped {
+            next = next
+                .replace_month(next.month().next())
+                .map_err(|e| format!("{}", e))?;
+            if next.month() == time::Month::January {
+                next = next
+                    .replace_year(next.year() + 1)
+                    .map_err(|e| format!("{}", e))?;
+            }
+        }
+        return next_occurrence(next, &schedule);
+    }
+
+    let (hour, wrapped) = next_hour(next.hour() as i32, &schedule.hour);
+
+    if hour != next.hour() as i32 {
+        next = next.replace_second(0).unwrap();
+        next = next.replace_minute(0).unwrap();
+        next = next
+            .replace_hour(hour as u8)
+            .map_err(|_e| format!("date error 4"))?;
+        if wrapped {
+            next = next.saturating_add(1.days());
+        }
+        return next_occurrence(next, &schedule);
+    }
+
+    let wrapped = next.second() != 0;
+    next = next
+        .replace_second(0)
+        .map_err(|_e| format!("date error 1"))?;
+
+    let (minute, wrapped) = next_minute(
+        next.minute() as i32 + if wrapped { 1 } else { 0 },
+        &schedule.minute,
+    );
+
+    if wrapped || minute != next.minute() as i32 {
+        next = next.replace_minute(minute as u8).unwrap();
+        if wrapped {
+            next = next.saturating_add(1.hours());
+        }
+        return next_occurrence(next, &schedule);
+    }
+
+    Ok(next)
+}
+
+fn next_minute(current: i32, minute: &Minute) -> (i32, bool) {
+    next_value(current, 0, 59, &minute.value)
+}
+
+fn next_hour(current: i32, hour: &Hour) -> (i32, bool) {
+    next_value(current, 0, 23, &hour.value)
+}
+
+fn is_leap_year(year: i32) -> bool {
+    if year % 400 == 0 {
+        return true;
+    }
+
+    if year % 100 == 0 {
+        return false;
+    }
+
+    if year % 4 == 0 {
+        return true;
+    }
+    false
+}
+
+fn max_days(datetime: OffsetDateTime) -> i32 {
+    match datetime.month() {
+        time::Month::January
+        | time::Month::March
+        | time::Month::May
+        | time::Month::July
+        | time::Month::August
+        | time::Month::October
+        | time::Month::December => 31,
+        time::Month::February => {
+            if is_leap_year(datetime.year()) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => 31,
+    }
+}
+
+fn next_day_of_week(datetime: OffsetDateTime, day_of_week: &DayOfWeek) -> (i32, bool) {
+    let current_day = datetime.day() as i32;
+    let current_weekday = datetime.weekday().number_from_monday() as i32;
+    let (next, _) = next_value(current_weekday, 0, 6, &day_of_week.value);
+
+    let num_days = (next - current_weekday).rem_euclid(7);
+    if num_days == 0 {
+        return (current_day, false);
+    }
+
+    next_day_of_month(
+        current_day + 1,
+        max_days(datetime),
+        &DayOfMonth {
+            value: Value::Step(Some(current_day), num_days),
+        },
+    )
+}
+
+fn next_day_of_month(current: i32, max_days: i32, day_of_month: &DayOfMonth) -> (i32, bool) {
+    next_value(current, 1, max_days, &day_of_month.value)
+}
+
+fn next_day_union(
+    datetime: OffsetDateTime,
+    day_of_week: &DayOfWeek,
+    day_of_month: &DayOfMonth,
+) -> (i32, bool) {
+    let current_day = datetime.day() as i32;
+    let (day1, wrapped1) = next_day_of_week(datetime, day_of_week);
+    let (day2, wrapped2) = next_day_of_month(current_day, max_days(datetime), day_of_month);
+
+    if (day1 - current_day).rem_euclid(31) < (day2 - current_day).rem_euclid(31) {
+        return (day1, wrapped1);
+    }
+
+    (day2, wrapped2)
+}
+
+fn next_month(current: i32, month: &Month) -> (time::Month, bool) {
+    let (x, wrapped) = next_value(current, 1, 12, &month.value);
+    let month = match x {
+        1 => time::Month::January,
+        2 => time::Month::February,
+        3 => time::Month::March,
+        4 => time::Month::April,
+        5 => time::Month::May,
+        6 => time::Month::June,
+        7 => time::Month::July,
+        8 => time::Month::August,
+        9 => time::Month::September,
+        10 => time::Month::October,
+        11 => time::Month::November,
+        12 => time::Month::December,
+        _ => time::Month::January,
+    };
+
+    (month, wrapped)
+}
+
+fn next_value(current: i32, min: i32, max: i32, value: &Value) -> (i32, bool) {
+    match value {
+        Value::Step(start, step) => {
+            let next = (start.unwrap_or(min)..=max)
+                .step_by(*step as usize)
+                .find(|i| current <= *i);
+            match next {
+                Some(n) => (n, false),
+                None => (min, true),
+            }
+        }
+        Value::Range(start, stop) => match (*start..=*stop).find(|i| current <= *i) {
+            Some(n) => (n, false),
+            None => (*start, true),
+        },
+        Value::List(ref list) => match list.iter().find(|i| current <= **i) {
+            Some(n) => (*n, false),
+            None => (list[0], true),
+        },
+        Value::Single(single) => (*single, current > *single),
+
+        Value::Wildcard => match (min..=max).find(|i| current <= *i) {
+            Some(n) => (n, false),
+            None => (min, true),
+        },
     }
 }
 
@@ -218,6 +436,7 @@ impl DayOfWeek {
     }
 }
 
+#[derive(Debug)]
 pub enum Value {
     Step(Option<i32>, i32),
     Range(i32, i32),
@@ -381,7 +600,10 @@ fn parse_month(elem: &str) -> Result<i32, String> {
 }
 
 fn parse_day_of_week(elem: &str) -> Result<i32, String> {
-    match WEEK_DAY_NAMES.iter().position(|x| x == &elem.to_uppercase()) {
+    match WEEK_DAY_NAMES
+        .iter()
+        .position(|x| x == &elem.to_uppercase())
+    {
         Some(i) => Ok((i + 1) as i32),
         None => elem
             .parse::<i32>()
@@ -465,6 +687,7 @@ fn join_oxford(vec: &Vec<i32>, to_string: fn(i32) -> String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use time::macros::datetime;
 
     #[test]
     fn only_wildcards() {
@@ -589,6 +812,106 @@ mod tests {
         assert_eq!(
             human_readable(&Schedule::from_str("* * * mar *").unwrap()),
             "At every minute in March."
+        );
+    }
+
+    #[test]
+    fn next_occ() {
+        let datetime = datetime!(2022-01-01 13:00:55 +0:00:00);
+        let schedule = Schedule::from_str("* * * * *").unwrap();
+
+        assert_eq!(
+            datetime!(2022-01-01 13:01:00 +0:00:00),
+            next_occurrence(datetime, &schedule).unwrap()
+        );
+    }
+
+    #[test]
+    fn next_occ_wrap_hour() {
+        let datetime = datetime!(2022-01-01 13:59:55 +0:00:00);
+        let schedule = Schedule::from_str("* * * * *").unwrap();
+
+        assert_eq!(
+            datetime!(2022-01-01 14:00:00 +0:00:00),
+            next_occurrence(datetime, &schedule).unwrap()
+        );
+    }
+
+    #[test]
+    fn next_occ_all_wrap() {
+        let datetime = datetime!(2022-12-31 23:59:55 +0:00:00);
+        let schedule = Schedule::from_str("* * * * *").unwrap();
+
+        assert_eq!(
+            datetime!(2023-01-01 00:00:00 +0:00:00),
+            next_occurrence(datetime, &schedule).unwrap()
+        );
+    }
+
+    #[test]
+    fn next_occ_all_wrap2() {
+        let datetime = datetime!(2022-12-31 23:59:55 +0:00:00);
+        let schedule = Schedule::from_str("* * * * MON").unwrap();
+
+        assert_eq!(
+            datetime!(2023-01-02 00:00:00 +0:00:00),
+            next_occurrence(datetime, &schedule).unwrap()
+        );
+    }
+
+    #[test]
+    fn next_occ_union() {
+        let datetime = datetime!(2023-03-21 00:00:55 +0:00:00); // Tuesday
+        let schedule = Schedule::from_str("34 * 1 * MON,FRI").unwrap();
+
+        assert_eq!(
+            datetime!(2023-03-24 00:34:00 +0:00:00),
+            next_occurrence(datetime, &schedule).unwrap()
+        );
+    }
+
+    #[test]
+    fn next_occ_union2() {
+        let datetime = datetime!(2023-03-21 00:55:55 +0:00:00); // Tuesday
+        let schedule = Schedule::from_str("34 * 1 * MON,FRI").unwrap();
+
+        assert_eq!(
+            datetime!(2023-03-24 00:34:00 +0:00:00),
+            next_occurrence(datetime, &schedule).unwrap()
+        );
+    }
+
+    #[test]
+    fn next_occ_from_crontab_guru_1() {
+        let datetime = datetime!(2023-03-22 12:12:55 +0:00:00); // Tuesday
+        let schedule = Schedule::from_str("15 14 1 * *").unwrap();
+
+        assert_eq!(
+            datetime!(2023-04-01 14:15:00 +0:00:00),
+            next_occurrence(datetime, &schedule).unwrap()
+        );
+    }
+
+    #[test]
+    fn next_occ_from_crontab_guru_2() {
+        let datetime = datetime!(2023-03-22 12:12:55 +0:00:00); // Tuesday
+        let schedule = Schedule::from_str("0 22 * * 1-5").unwrap();
+
+        assert_eq!(
+            datetime!(2023-03-22 22:00:00 +0:00:00),
+            next_occurrence(datetime, &schedule).unwrap()
+        );
+    }
+
+    #[test]
+    fn next_occ_from_crontab_guru_3() {
+        let datetime = datetime!(2023-03-22 12:12:55 +0:00:00); // Tuesday
+                                                                // TODO: Implement stepped ranges.
+        let schedule = Schedule::from_str("23 0-20/2 * * *").unwrap();
+
+        assert_eq!(
+            datetime!(2023-03-22 12:23:00 +0:00:00),
+            next_occurrence(datetime, &schedule).unwrap()
         );
     }
 }
