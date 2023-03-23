@@ -238,7 +238,10 @@ fn next_value(current: i32, min: i32, max: i32, value: &Value) -> (i32, bool) {
                 None => (min, true),
             }
         }
-        Value::Range(start, stop) => match (*start..=*stop).find(|i| current <= *i) {
+        Value::Range(start, stop, step) => match (*start..=*stop)
+            .step_by(step.map_or(1, |s| s as usize))
+            .find(|i| current <= *i)
+        {
             Some(n) => (n, false),
             None => (*start, true),
         },
@@ -267,9 +270,10 @@ pub fn human_readable(schedule: &Schedule) -> String {
                 None => "".to_string(),
             }
         )),
-        Value::Range(start, stop) => {
-            result.push_str(&format!("At every minute from {start} through {stop}"))
-        }
+        Value::Range(start, stop, step) => result.push_str(&format!(
+            "At every {}minute from {start} through {stop}",
+            step.map_or("".to_string(), |s| ordinal(s))
+        )),
         Value::List(list) => result.push_str(&format!(
             "At minute {}",
             join_oxford(list, |i| i.to_string())
@@ -287,8 +291,11 @@ pub fn human_readable(schedule: &Schedule) -> String {
                 None => "".to_string(),
             }
         )),
-        Value::Range(start, stop) => {
-            result.push_str(&format!(" past every hour from {start} through {stop}"))
+        Value::Range(start, stop, step) => {
+            result.push_str(&format!(
+                " past every {}hour from {start} through {stop}",
+                step.map_or("".to_string(), |s| ordinal(s))
+            ));
         }
         Value::List(list) => result.push_str(&format!(
             " past hour {}",
@@ -307,8 +314,9 @@ pub fn human_readable(schedule: &Schedule) -> String {
                 None => "".to_string(),
             }
         )),
-        Value::Range(start, stop) => result.push_str(&format!(
-            " on every day-of-month from {start} through {stop}"
+        Value::Range(start, stop, step) => result.push_str(&format!(
+            " on every {}day-of-month from {start} through {stop}",
+            step.map_or("".to_string(), |s| ordinal(s)),
         )),
         Value::List(ref list) => result.push_str(&format!(
             " on day-of-month {}",
@@ -327,8 +335,9 @@ pub fn human_readable(schedule: &Schedule) -> String {
                 None => "".to_string(),
             }
         )),
-        Value::Range(start, stop) => result.push_str(&format!(
-            " in every month from {} through {}",
+        Value::Range(start, stop, step) => result.push_str(&format!(
+            " in every {}month from {} through {}",
+            step.map_or("".to_string(), |s| ordinal(s)),
             month_string(*start),
             month_string(*stop)
         )),
@@ -354,9 +363,10 @@ pub fn human_readable(schedule: &Schedule) -> String {
                 None => "".to_string(),
             }
         )),
-        Value::Range(start, stop) => result.push_str(&format!(
-            " {}on every day-of-week from {} through {}",
+        Value::Range(start, stop, step) => result.push_str(&format!(
+            " {}on every {}day-of-week from {} through {}",
             day_of_week_prefix,
+            step.map_or("".to_string(), |s| ordinal(s)),
             day_of_week_string(*start),
             day_of_week_string(*stop)
         )),
@@ -439,7 +449,7 @@ impl DayOfWeek {
 #[derive(Debug)]
 pub enum Value {
     Step(Option<i32>, i32),
-    Range(i32, i32),
+    Range(i32, i32, Option<i32>),
     List(Vec<i32>),
     Single(i32),
     Wildcard,
@@ -450,10 +460,10 @@ impl Value {
         value: &str,
         elem_parser: fn(&str) -> Result<i32, String>,
     ) -> Result<Value, String> {
-        if value.contains('/') {
+        if value.contains('-') {
+            parse_stepped_range(value, elem_parser)
+        } else if value.contains('/') {
             parse_step(value, elem_parser)
-        } else if value.contains('-') {
-            parse_range(value, elem_parser)
         } else if value.contains(',') {
             parse_list(value, elem_parser)
         } else if value == "*" {
@@ -473,7 +483,15 @@ pub fn random_value(min: i32, max: i32) -> Value {
         },
         1 => {
             let start = fastrand::i32(min..max);
-            Value::Range(start, fastrand::i32(start..=max))
+            if fastrand::i32(0..=4) == 4 {
+                Value::Range(
+                    start,
+                    fastrand::i32(start..=max),
+                    Some(fastrand::i32(2..=4)),
+                )
+            } else {
+                Value::Range(start, fastrand::i32(start..=max), None)
+            }
         }
         2 => Value::Single(fastrand::i32(min..=max)),
         3 => Value::Step(Some(fastrand::i32(min..=max)), fastrand::i32(min..=max)),
@@ -486,7 +504,13 @@ impl std::fmt::Display for Value {
         let str = match self {
             Value::Step(Some(start), step) => format!("{start}/{step}"),
             Value::Step(None, step) => format!("*/{step}"),
-            Value::Range(start, stop) => format!("{start}-{stop}"),
+            Value::Range(start, stop, step) => format!(
+                "{start}-{stop}{}",
+                match step {
+                    Some(s) => "/".to_string() + s.to_string().as_ref(),
+                    None => "".to_string(),
+                }
+            ),
             Value::List(list) => list
                 .iter()
                 .map(|i| i.to_string())
@@ -510,7 +534,27 @@ fn parse_list(input: &str, elem_parser: fn(&str) -> Result<i32, String>) -> Resu
     ))
 }
 
-fn parse_range(input: &str, elem_parser: fn(&str) -> Result<i32, String>) -> Result<Value, String> {
+fn parse_stepped_range(
+    input: &str,
+    elem_parser: fn(&str) -> Result<i32, String>,
+) -> Result<Value, String> {
+    let split = input.split('/').collect::<Vec<&str>>();
+    if split.len() > 2 {
+        return Err(format!("only one '/' is allowed"));
+    }
+    let step = if split.len() == 2 {
+        Some(elem_parser(split[1])?)
+    } else {
+        None
+    };
+    parse_range(split[0], step, elem_parser)
+}
+
+fn parse_range(
+    input: &str,
+    step: Option<i32>,
+    elem_parser: fn(&str) -> Result<i32, String>,
+) -> Result<Value, String> {
     let l = input
         .split("-")
         .map(elem_parser)
@@ -521,7 +565,7 @@ fn parse_range(input: &str, elem_parser: fn(&str) -> Result<i32, String>) -> Res
     if l[0] > l[1] {
         return Err(format!("range error {} is bigger than {}", l[0], l[1]));
     }
-    Ok(Value::Range(l[0], l[1]))
+    Ok(Value::Range(l[0], l[1], step))
 }
 
 fn parse_step(input: &str, elem_parser: fn(&str) -> Result<i32, String>) -> Result<Value, String> {
