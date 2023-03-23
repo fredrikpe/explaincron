@@ -11,6 +11,7 @@ $ cargo install explaincron
 
 ## TODO
  - Support non-standard cron schedules (7 for sunday, @monthly...)
- - Support seconds?
+ - Allow user to specify cron specification?
+ - Support seconds and years?
  - Colors?
  - Pipe support?
